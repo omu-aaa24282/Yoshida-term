@@ -1,129 +1,37 @@
-<!DOCTYPE html>
-<html lang="ja">
-
-<head>
-    <meta charset="UTF-8">
-    <title>地図タイルと各種レイヤー表示（大阪府・堺市版）</title>
-
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.3.0/dist/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.3.0/dist/MarkerCluster.Default.css" />
-    <script src="https://unpkg.com/leaflet.markercluster@1.3.0/dist/leaflet.markercluster.js"></script>
-
-    <script src="./L.KML.js"></script>
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.css" />
-    <script src="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.js"></script>
-</head>
-
-<body>
-
-    <div id="map" style="height: 80vh;"></div>
-
-    <script>
-        // ===== 地図初期化（堺市役所付近をセンターに設定） =====
-        const map = L.map('map', {
-            center: [34.573, 135.483],
-            zoom: 13
-        });
-
-        // ===== ベースレイヤー =====
-        const chiriinLayer = L.tileLayer(
-            'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',
-            { maxZoom: 18, attribution: "地理院地図" }
-        ).addTo(map);
-
-        const backgroundLayer = L.tileLayer(
-            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }
+// ===== 行政区画（堺市）を赤色で表示 =====
+fetch("./N03-23_27_230101.geojson") // 画像にある大阪府のファイル名
+    .then(res => {
+        if (!res.ok) throw new Error('ファイルの読み込みに失敗しました');
+        return res.json();
+    })
+    .then(data => {
+        // 堺市（全区）を抽出するためのフィルタリング
+        const filteredData = data.features.filter(feature => 
+            feature.properties.N03_003 === '堺市' || 
+            feature.properties.N03_004 === '堺市'
         );
 
-        const LayerControl = L.control.layers({
-            "地理院地図（標準）": chiriinLayer,
-            "OpenStreetMap": backgroundLayer
-        }).addTo(map);
-
-        L.control.scale().addTo(map);
-
-        // ===== 大阪府 学校 クラスタ (P29-21_27.geojson) =====
-        fetch('./P29-21_27.geojson')
-            .then(res => res.json())
-            .then(json => {
-                const markers = L.markerClusterGroup();
-                const geojson = L.geoJSON(json, {
-                    onEachFeature: (feature, layer) => {
-                        layer.bindPopup(feature.properties.P29_004 || "学校名なし");
-                    }
-                });
-                markers.addLayer(geojson);
-                map.addLayer(markers);
-                LayerControl.addOverlay(markers, "学校（大阪府・クラスタ）");
-            }).catch(e => console.error("大阪府学校データの読み込みに失敗しました:", e));
-
-        // ===== KML 堺市指定避難所 (sakai_siteihinansyo.kml) =====
-        fetch("./sakai_siteihinansyo.kml")
-            .then(res => res.text())
-            .then(kmltext => {
-                const parser = new DOMParser();
-                const kml = parser.parseFromString(kmltext, "text/xml");
-                const track = new L.KML(kml);
-                map.addLayer(track);
-                LayerControl.addOverlay(track, "堺市指定避難所(KML)");
-            }).catch(e => console.error("KMLの読み込みに失敗しました:", e));
-
-        // ===== 行政区画（堺市）表示 =====
-        // ※画像にある大阪府のGeoJSONファイルを想定
-        fetch("./N03-23_27_230101.geojson")
-            .then(res => res.json())
-            .then(data => {
-                // N03_003が「堺市」である全区域を抽出
-                const filteredData = data.features.filter(
-                    feature => feature.properties.N03_003 === '堺市'
-                );
-
-                const sakai_area = L.geoJSON(filteredData, {
-                    style: {
-                        color: "#0000FF",
-                        weight: 4,
-                        fillColor: "#0000FF",
-                        fillOpacity: 0.1
-                    }
-                }).bindPopup(layer => layer.feature.properties.N03_003 + layer.feature.properties.N03_004);
-
-                map.addLayer(sakai_area);
-                LayerControl.addOverlay(sakai_area, "行政区域（堺市）");
-            })
-            .catch(e => console.error("行政区画データの取得エラー:", e));
-
-        // ===== OSRM 動的ルート検索 (堺市内) =====
-        // 出発地: 堺東駅, 目的地: 仁徳天皇陵古墳付近
-        const routeUrl = 'https://routing.openstreetmap.de/routed-car/route/v1/driving/135.483,34.575;135.487,34.564?geometries=geojson&overview=full';
-
-        async function addSakaiRoute() {
-            try {
-                const response = await fetch(routeUrl);
-                const json = await response.json();
-                const routeLayer = L.geoJSON(json['routes'][0]['geometry'], {
-                    style: { color: "#FF00FF", weight: 6, opacity: 0.65 }
-                });
-                routeLayer.addTo(map);
-                LayerControl.addOverlay(routeLayer, "堺市内ルート（検索）");
-            } catch (e) {
-                console.error("ルート検索に失敗しました:", e);
-            }
+        if (filteredData.length === 0) {
+            console.warn("堺市のデータが見つかりませんでした。属性名を確認してください。");
+            return;
         }
-        addSakaiRoute();
 
-        // 雨雲レイヤー
-        L.control.rainviewer({
-            position: 'bottomleft',
-            animationInterval: 500,
-            opacity: 0.5
-        }).addTo(map);
+        const sakai_area = L.geoJSON(filteredData, {
+            style: {
+                color: "#FF0000",      // 枠線を赤に変更
+                weight: 4,             // 太さを強調
+                fillColor: "#FF0000",  // 塗りつぶしを赤に変更
+                fillOpacity: 0.3       // 透明度を少し上げる
+            }
+        }).bindPopup(layer => {
+            const p = layer.feature.properties;
+            return (p.N03_003 || "") + (p.N03_004 || "");
+        });
 
-    </script>
-</body>
+        map.addLayer(sakai_area);
+        LayerControl.addOverlay(sakai_area, "行政区域（堺市・赤）");
 
-</html>
+        // 堺市全体が見えるようにズーム
+        map.fitBounds(sakai_area.getBounds());
+    })
+    .catch(e => console.error("行政区画データの取得エラー:", e));

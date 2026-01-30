@@ -51,4 +51,81 @@
         fetch("./N03-23_27_230101.geojson") 
             .then(res => res.json())
             .then(data => {
-                // N03_003が「堺市」である全区域（各区）を
+                // N03_003が「堺市」である全区域（各区）を抽出
+                const filteredData = data.features.filter(
+                    feature => feature.properties.N03_003 === '堺市'
+                );
+
+                const sakai_area = L.geoJSON(filteredData, {
+                    style: {
+                        color: "#FF0000",      // 枠線を赤
+                        weight: 5,             // 枠線を太く
+                        fillColor: "#FF0000",  // 塗りつぶしを赤
+                        fillOpacity: 0.2
+                    }
+                }).bindPopup(layer => layer.feature.properties.N03_003 + layer.feature.properties.N03_004);
+
+                map.addLayer(sakai_area);
+                LayerControl.addOverlay(sakai_area, "行政区域（堺市）");
+                
+                // 堺市に合わせてズーム
+                map.fitBounds(sakai_area.getBounds());
+            })
+            .catch(e => console.error("行政区域データの読み込みに失敗しました。ファイル名を確認してください:", e));
+
+        // ===== 2. 大阪府 学校 クラスタ (P29-21_27.geojson) =====
+        fetch('./P29-21_27.geojson')
+            .then(res => res.json())
+            .then(json => {
+                const markers = L.markerClusterGroup();
+                const geojson = L.geoJSON(json, {
+                    onEachFeature: (feature, layer) => {
+                        layer.bindPopup(feature.properties.P29_004 || "学校名なし");
+                    }
+                });
+                markers.addLayer(geojson);
+                map.addLayer(markers);
+                LayerControl.addOverlay(markers, "学校（大阪府）");
+            }).catch(e => console.error("学校データの読み込みに失敗しました:", e));
+
+        // ===== 3. KML 堺市指定避難所 (sakai_siteihinansyo.kml) =====
+        fetch("./sakai_siteihinansyo.kml")
+            .then(res => res.text())
+            .then(kmltext => {
+                const parser = new DOMParser();
+                const kml = parser.parseFromString(kmltext, "text/xml");
+                const track = new L.KML(kml);
+                map.addLayer(track);
+                LayerControl.addOverlay(track, "堺市指定避難所(KML)");
+            }).catch(e => console.error("KMLの読み込みに失敗しました:", e));
+
+        // ===== 4. OSRM 動的ルート検索 (堺市内) =====
+        // 出発地: 堺東駅, 目的地: 仁徳天皇陵古墳
+        const routeUrl = 'https://routing.openstreetmap.de/routed-car/route/v1/driving/135.483,34.575;135.487,34.564?geometries=geojson&overview=full';
+
+        async function addSakaiRoute() {
+            try {
+                const response = await fetch(routeUrl);
+                const json = await response.json();
+                const routeLayer = L.geoJSON(json['routes'][0]['geometry'], {
+                    style: { color: "#FF00FF", weight: 6, opacity: 0.7 }
+                });
+                routeLayer.addTo(map);
+                LayerControl.addOverlay(routeLayer, "堺市内ルート（検索）");
+            } catch (e) {
+                console.error("ルート検索APIの取得に失敗しました:", e);
+            }
+        }
+        addSakaiRoute();
+
+        // ===== 雨雲レイヤー =====
+        L.control.rainviewer({
+            position: 'bottomleft',
+            animationInterval: 500,
+            opacity: 0.5
+        }).addTo(map);
+
+    </script>
+</body>
+
+</html>

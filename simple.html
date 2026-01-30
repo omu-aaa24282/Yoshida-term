@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>地図表示（大阪府・堺市版）</title>
+    <title>地図タイルと各種レイヤー表示（大阪府・堺市版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -23,9 +23,9 @@
     <div id="map" style="height: 80vh;"></div>
 
     <script>
-        // ===== 地図初期化（堺市付近） =====
+        // ===== 地図初期化（堺市役所付近をセンターに設定） =====
         const map = L.map('map', {
-            center: [34.573, 135.483], 
+            center: [34.573, 135.483],
             zoom: 13
         });
 
@@ -47,34 +47,7 @@
 
         L.control.scale().addTo(map);
 
-        // ===== 行政区画（大阪府堺市）表示 =====
-        // ※ファイル名は国土数値情報の大阪府データ（27）に合わせて変更してください
-        fetch("./N03-23_27_230101.geojson") 
-            .then(res => res.json())
-            .then(data => {
-                // 堺市の全区を含める場合は N03_003（郡・政令指定都市名）でフィルタリング
-                const filteredData = data.features.filter(
-                    feature => feature.properties.N03_003 === '堺市'
-                );
-
-                if (filteredData.length === 0) return;
-
-                const osaka_area = L.geoJSON(filteredData, {
-                    style: {
-                        color: "#0000FF",
-                        weight: 3,
-                        fillColor: "#0000FF",
-                        fillOpacity: 0.1
-                    }
-                }).bindPopup(layer => layer.feature.properties.N03_003 + layer.feature.properties.N03_004);
-
-                map.addLayer(osaka_area);
-                LayerControl.addOverlay(osaka_area, "行政区域（堺市）");
-            })
-            .catch(e => console.error("行政区画データの取得エラー:", e));
-
-        // ===== 大阪府 学校 クラスタ =====
-        // ※ファイル名は大阪府（27）の想定
+        // ===== 大阪府 学校 クラスタ (P29-21_27.geojson) =====
         fetch('./P29-21_27.geojson')
             .then(res => res.json())
             .then(json => {
@@ -86,26 +59,59 @@
                 });
                 markers.addLayer(geojson);
                 map.addLayer(markers);
-                LayerControl.addOverlay(markers, "大阪府の学校（クラスタ）");
-            }).catch(e => console.error("学校データの読み込みに失敗しました:", e));
+                LayerControl.addOverlay(markers, "学校（大阪府・クラスタ）");
+            }).catch(e => console.error("大阪府学校データの読み込みに失敗しました:", e));
 
-        // ===== OSRM 動的ルート検索 (堺市) =====
-        // 出発地: 堺東駅 (135.483, 34.575), 目的地: 仁徳天皇陵 (135.487, 34.564)
+        // ===== KML 堺市指定避難所 (sakai_siteihinansyo.kml) =====
+        fetch("./sakai_siteihinansyo.kml")
+            .then(res => res.text())
+            .then(kmltext => {
+                const parser = new DOMParser();
+                const kml = parser.parseFromString(kmltext, "text/xml");
+                const track = new L.KML(kml);
+                map.addLayer(track);
+                LayerControl.addOverlay(track, "堺市指定避難所(KML)");
+            }).catch(e => console.error("KMLの読み込みに失敗しました:", e));
+
+        // ===== 行政区画（堺市）表示 =====
+        // ※画像にある大阪府のGeoJSONファイルを想定
+        fetch("./N03-23_27_230101.geojson")
+            .then(res => res.json())
+            .then(data => {
+                // N03_003が「堺市」である全区域を抽出
+                const filteredData = data.features.filter(
+                    feature => feature.properties.N03_003 === '堺市'
+                );
+
+                const sakai_area = L.geoJSON(filteredData, {
+                    style: {
+                        color: "#0000FF",
+                        weight: 4,
+                        fillColor: "#0000FF",
+                        fillOpacity: 0.1
+                    }
+                }).bindPopup(layer => layer.feature.properties.N03_003 + layer.feature.properties.N03_004);
+
+                map.addLayer(sakai_area);
+                LayerControl.addOverlay(sakai_area, "行政区域（堺市）");
+            })
+            .catch(e => console.error("行政区画データの取得エラー:", e));
+
+        // ===== OSRM 動的ルート検索 (堺市内) =====
+        // 出発地: 堺東駅, 目的地: 仁徳天皇陵古墳付近
         const routeUrl = 'https://routing.openstreetmap.de/routed-car/route/v1/driving/135.483,34.575;135.487,34.564?geometries=geojson&overview=full';
 
-        let routeLayer;
         async function addSakaiRoute() {
             try {
                 const response = await fetch(routeUrl);
                 const json = await response.json();
-                
-                routeLayer = L.geoJSON(json['routes'][0]['geometry'], {
-                    style: { "color": "#FF4500", "weight": 6, "opacity": 0.8 }
+                const routeLayer = L.geoJSON(json['routes'][0]['geometry'], {
+                    style: { color: "#FF00FF", weight: 6, opacity: 0.65 }
                 });
                 routeLayer.addTo(map);
-                LayerControl.addOverlay(routeLayer, "堺ルート（堺東〜仁徳陵）");
+                LayerControl.addOverlay(routeLayer, "堺市内ルート（検索）");
             } catch (e) {
-                console.error("ルート検索APIの取得に失敗しました:", e);
+                console.error("ルート検索に失敗しました:", e);
             }
         }
         addSakaiRoute();
@@ -119,4 +125,5 @@
 
     </script>
 </body>
+
 </html>

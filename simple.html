@@ -1,37 +1,54 @@
-// ===== 行政区画（堺市）を赤色で表示 =====
-fetch("./N03-23_27_230101.geojson") // 画像にある大阪府のファイル名
-    .then(res => {
-        if (!res.ok) throw new Error('ファイルの読み込みに失敗しました');
-        return res.json();
-    })
-    .then(data => {
-        // 堺市（全区）を抽出するためのフィルタリング
-        const filteredData = data.features.filter(feature => 
-            feature.properties.N03_003 === '堺市' || 
-            feature.properties.N03_004 === '堺市'
-        );
+<!DOCTYPE html>
+<html lang="ja">
 
-        if (filteredData.length === 0) {
-            console.warn("堺市のデータが見つかりませんでした。属性名を確認してください。");
-            return;
-        }
+<head>
+    <meta charset="UTF-8">
+    <title>堺市地図レイヤー表示</title>
 
-        const sakai_area = L.geoJSON(filteredData, {
-            style: {
-                color: "#FF0000",      // 枠線を赤に変更
-                weight: 4,             // 太さを強調
-                fillColor: "#FF0000",  // 塗りつぶしを赤に変更
-                fillOpacity: 0.3       // 透明度を少し上げる
-            }
-        }).bindPopup(layer => {
-            const p = layer.feature.properties;
-            return (p.N03_003 || "") + (p.N03_004 || "");
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.3.0/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.3.0/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.3.0/dist/leaflet.markercluster.js"></script>
+
+    <script src="./L.KML.js"></script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.css" />
+    <script src="https://cdn.jsdelivr.net/gh/mwasil/Leaflet.Rainviewer/leaflet.rainviewer.js"></script>
+</head>
+
+<body>
+
+    <div id="map" style="height: 80vh;"></div>
+
+    <script>
+        // ===== 地図初期化（堺市役所付近） =====
+        const map = L.map('map', {
+            center: [34.573, 135.483],
+            zoom: 13
         });
 
-        map.addLayer(sakai_area);
-        LayerControl.addOverlay(sakai_area, "行政区域（堺市・赤）");
+        // ===== ベースレイヤー =====
+        const chiriinLayer = L.tileLayer(
+            'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png',
+            { maxZoom: 18, attribution: "地理院地図" }
+        ).addTo(map);
 
-        // 堺市全体が見えるようにズーム
-        map.fitBounds(sakai_area.getBounds());
-    })
-    .catch(e => console.error("行政区画データの取得エラー:", e));
+        const backgroundLayer = L.tileLayer(
+            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }
+        );
+
+        const LayerControl = L.control.layers({
+            "地理院地図（標準）": chiriinLayer,
+            "OpenStreetMap": backgroundLayer
+        }).addTo(map);
+
+        L.control.scale().addTo(map);
+
+        // ===== 1. 行政区画（堺市）を赤色で表示 =====
+        fetch("./N03-23_27_230101.geojson") 
+            .then(res => res.json())
+            .then(data => {
+                // N03_003が「堺市」である全区域（各区）を
